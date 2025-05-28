@@ -3,13 +3,24 @@
 #include <filesystem>
 #include <iostream>
 #include <vector>
+#include "FSBANK/fsbank.h"
+#include "FSBANK/fsbank_errors.h"
 
 namespace fs = std::filesystem;
 
 void ERRCHECK(FMOD_RESULT result) {
 #ifdef _DEBUG
     if (result != FMOD_OK) {
-        std::cerr << "FMOD error: " << FMOD_ErrorString(result) << std::endl;
+        printf("FMOD error! (%d) %s\n", result, FMOD_ErrorString(result));
+        exit(-1);
+    }
+#endif
+}
+
+void ERRCHECK(FSBANK_RESULT result) {
+#ifdef _DEBUG
+    if (result != FSBANK_OK) {
+        printf("FSBANK error! (%d) %s\n", result, FSBank_ErrorString(result));
         exit(-1);
     }
 #endif
@@ -24,8 +35,10 @@ void dumpFSB(const fs::path& filePath) {
     result = FMOD::System_Create(&system);
     ERRCHECK(result);
 
+
+    //only on fmodl.dll
 #ifdef _DEBUG
-    result = FMOD::Debug_Initialize(FMOD_DEBUG_LEVEL_LOG, FMOD_DEBUG_MODE_FILE, 0, "fmodlog.txt");
+    result = FMOD::Debug_Initialize(FMOD_DEBUG_LEVEL_LOG, FMOD_DEBUG_MODE_FILE, nullptr, "fmodlog.txt");
     ERRCHECK(result);
 #endif
 
@@ -107,12 +120,66 @@ void dumpFSB(const fs::path& filePath) {
         system->release();
     }
 }
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <vector>
+#include <filesystem>
+#include <algorithm>
+
+namespace fs = std::filesystem;
 
 void createFSB(const fs::path& filePath) {
-    // Placeholder: You’ll need to implement actual FSB creation logic here,
-    // potentially using FMOD Studio API or an external tool.
-    std::cerr << "FSB creation not yet implemented. Given file: " << filePath << std::endl;
+    FSBANK_RESULT result;
+    std::vector<std::string> fileNames;
+
+    std::string ext = filePath.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+    if (ext == ".txt") {
+        std::ifstream fileList(filePath);
+        if (!fileList) {
+            std::cerr << "Failed to open file list: " << filePath << "\n";
+            return;
+        }
+
+        std::string line;
+        while (std::getline(fileList, line)) {
+            if (!line.empty()) {
+                fileNames.push_back(line);
+            }
+        }
+    }
+    else {
+        fileNames.push_back(filePath.string());
+    }
+
+    result = FSBank_Init(FSBANK_FSBVERSION_FSB5, FSBANK_INIT_NORMAL, 1, nullptr);
+    ERRCHECK(result);
+
+    // Create one FSBANK_SUBSOUND per file
+    std::vector<FSBANK_SUBSOUND> subsounds(fileNames.size());
+    std::vector<const char*> cstrs; // Store c-strings separately to ensure they remain valid
+    cstrs.reserve(fileNames.size());
+
+    for (size_t i = 0; i < fileNames.size(); ++i) {
+        cstrs.push_back(fileNames[i].c_str());
+
+        subsounds[i] = {};
+        subsounds[i].fileNames = &cstrs.back();
+        subsounds[i].numFiles = 1;
+        subsounds[i].overrideFlags = FSBANK_BUILD_DISABLESYNCPOINTS;
+        subsounds[i].overrideQuality = 100;
+    }
+
+    result = FSBank_Build(subsounds.data(),static_cast<int>(subsounds.size()),FSBANK_FORMAT_VORBIS,FSBANK_BUILD_DEFAULT | FSBANK_BUILD_DONTLOOP,100,nullptr,"out.fsb");
+    ERRCHECK(result);
+
+    result = FSBank_Release();
+    ERRCHECK(result);
 }
+
+
 
 int main(int argc, const char** argv) {
 
@@ -133,7 +200,7 @@ int main(int argc, const char** argv) {
 
     if (mode != "dump") {
         if (argc < 3) {
-            std::cerr << "Usage: " << argv[0] << " <create|dump> <audio_file_path>" << std::endl;
+            std::cerr << "Usage: " << argv[0] << " <create|dump> <FSB/List>" << std::endl;
             return -1;
         }
 

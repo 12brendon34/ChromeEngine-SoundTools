@@ -4,3 +4,4 @@ Debug
 packages
 obj
 bin
+/.fsbcache

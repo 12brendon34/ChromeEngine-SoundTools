@@ -44,5 +44,11 @@
     <ClInclude Include="FMOD\fmod.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="FSBANK\fsbank_errors.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="FSBANK\fsbank.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

@@ -1,40 +1,26 @@
 ﻿#include "FMOD/fmod.hpp"
 #include "FMOD/fmod_errors.h"
-
 #include <filesystem>
 #include <iostream>
+#include <vector>
 
 namespace fs = std::filesystem;
 
-void ERRCHECK(FMOD_RESULT result)
-{
+void ERRCHECK(FMOD_RESULT result) {
 #ifdef _DEBUG
-    if (result != FMOD_OK)
-    {
-        printf("FMOD error! (%d) %s\n", result, FMOD_ErrorString(result));
+    if (result != FMOD_OK) {
+        std::cerr << "FMOD error: " << FMOD_ErrorString(result) << std::endl;
         exit(-1);
     }
 #endif
 }
 
-int main(int argc, const char** argv) {
-
-    FMOD::System *system = nullptr;
-    FMOD::Sound *sound = nullptr;
-    FMOD_RESULT result = FMOD_OK;
+void dumpFSB(const fs::path& filePath) {
+    FMOD::System* system = nullptr;
+    FMOD::Sound* sound = nullptr;
+    FMOD_RESULT result;
     unsigned int version = 0;
 
-    if (argc < 2) {
-        std::cerr << "Usage: " << argv[0] << " <audio_file_path>" << std::endl;
-        return -1;
-    }
-    const fs::path filePath = fs::absolute(argv[1]);
-
-    if (!fs::exists(filePath)) {
-        std::cerr << "File does not exist: " << filePath << std::endl;
-        return -1;
-    }
-    
     result = FMOD::System_Create(&system);
     ERRCHECK(result);
 
@@ -46,10 +32,9 @@ int main(int argc, const char** argv) {
     result = system->getVersion(&version);
     ERRCHECK(result);
 
-    if (version < FMOD_VERSION)
-    {
+    if (version < FMOD_VERSION) {
         printf("Error!  You are using an old version of FMOD %08x.  This program requires %08x\n", version, FMOD_VERSION);
-        return 0;
+        exit(-1);
     }
 
     result = system->init(32, FMOD_INIT_NORMAL, nullptr);
@@ -77,15 +62,13 @@ int main(int argc, const char** argv) {
         ERRCHECK(result);
     }
 
-    //pretty much all of this was just to get each subsound name lol
     result = sound->release();
     ERRCHECK(result);
-
     result = system->release();
     ERRCHECK(result);
 
+    // Export each sub sound as a WAV
     for (int i = 0; i < numSubSounds; ++i) {
-
         std::string filename = SoundNames[i] + ".wav";
 
         FMOD::System* system;
@@ -102,13 +85,13 @@ int main(int argc, const char** argv) {
         result = system->init(32, FMOD_INIT_STREAM_FROM_UPDATE, (void*)filename.c_str());
         ERRCHECK(result);
 
-        result = system->createSound(filePath.string().c_str(), FMOD_DEFAULT, 0, &sound);
+        result = system->createSound(filePath.string().c_str(), FMOD_DEFAULT, nullptr, &sound);
         ERRCHECK(result);
 
         result = sound->getSubSound(i, &subsound);
         ERRCHECK(result);
-        
-        result = system->playSound(subsound, 0, false, &channel);
+
+        result = system->playSound(subsound, nullptr, false, &channel);
         ERRCHECK(result);
 
         bool playing = true;
@@ -119,12 +102,41 @@ int main(int argc, const char** argv) {
             ERRCHECK(result);
         }
 
-        result = subsound->release();
-        ERRCHECK(result);
-        result = sound->release();
-        ERRCHECK(result);
-        result = system->release();
-        ERRCHECK(result);
+        subsound->release();
+        sound->release();
+        system->release();
+    }
+}
+
+void createFSB(const fs::path& filePath) {
+    // Placeholder: You’ll need to implement actual FSB creation logic here,
+    // potentially using FMOD Studio API or an external tool.
+    std::cerr << "FSB creation not yet implemented. Given file: " << filePath << std::endl;
+}
+
+int main(int argc, const char** argv) {
+    if (argc < 3) {
+        std::cerr << "Usage: " << argv[0] << " <create|dump> <audio_file_path>" << std::endl;
+        return -1;
+    }
+
+    std::string mode = argv[1];
+    fs::path filePath = fs::absolute(argv[2]);
+
+    if (!fs::exists(filePath)) {
+        std::cerr << "File does not exist: " << filePath << std::endl;
+        return -1;
+    }
+
+    if (mode == "dump") {
+        dumpFSB(filePath);
+    }
+    else if (mode == "create") {
+        createFSB(filePath);
+    }
+    else {
+        std::cerr << "Invalid mode. Use 'create' or 'dump'." << std::endl;
+        return -1;
     }
 
     return 0;

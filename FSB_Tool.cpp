@@ -1,10 +1,13 @@
 ﻿#include "FMOD/fmod.hpp"
 #include "FMOD/fmod_errors.h"
+
+#include "FSBANK/fsbank.h"
+#include "FSBANK/fsbank_errors.h"
+
 #include <filesystem>
 #include <iostream>
 #include <vector>
-#include "FSBANK/fsbank.h"
-#include "FSBANK/fsbank_errors.h"
+#include <fstream>
 
 namespace fs = std::filesystem;
 
@@ -120,14 +123,6 @@ void dumpFSB(const fs::path& filePath) {
         system->release();
     }
 }
-#include <fstream>
-#include <iostream>
-#include <string>
-#include <vector>
-#include <filesystem>
-#include <algorithm>
-
-namespace fs = std::filesystem;
 
 void createFSB(const fs::path& filePath) {
     FSBANK_RESULT result;
@@ -169,24 +164,22 @@ void createFSB(const fs::path& filePath) {
         subsounds[i].fileNames = &cstrs.back();
         subsounds[i].numFiles = 1;
         subsounds[i].overrideFlags = FSBANK_BUILD_DISABLESYNCPOINTS;
-        subsounds[i].overrideQuality = 100;
+        //subsounds[i].overrideQuality = 100;
+        //subsounds[i].desiredSampleRate = 48000;
+        //subsounds[i].percentOptimizedRate = 100;
     }
-
-    result = FSBank_Build(subsounds.data(),static_cast<int>(subsounds.size()),FSBANK_FORMAT_VORBIS,FSBANK_BUILD_DEFAULT | FSBANK_BUILD_DONTLOOP,100,nullptr,"out.fsb");
+    //FSBANK_FORMAT_OPUS FSBANK_FORMAT_VORBIS
+    result = FSBank_Build(subsounds.data(),static_cast<int>(subsounds.size()),FSBANK_FORMAT_OPUS,FSBANK_BUILD_DEFAULT | FSBANK_BUILD_DONTLOOP,100,nullptr,"out.fsb");
     ERRCHECK(result);
 
     result = FSBank_Release();
     ERRCHECK(result);
 }
 
-
-
 int main(int argc, const char** argv) {
 
     std::string mode;
     fs::path filePath;
-
-
 
     if (argc == 2) {
         filePath = fs::absolute(argv[1]);

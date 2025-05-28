@@ -115,19 +115,39 @@ void createFSB(const fs::path& filePath) {
 }
 
 int main(int argc, const char** argv) {
-    if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " <create|dump> <audio_file_path>" << std::endl;
-        return -1;
+
+    std::string mode;
+    fs::path filePath;
+
+
+
+    if (argc == 2) {
+        filePath = fs::absolute(argv[1]);
+
+        std::string ext = filePath.extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        if (ext == ".fsb") {
+            mode = "dump";
+        }
     }
 
-    std::string mode = argv[1];
-    fs::path filePath = fs::absolute(argv[2]);
+    if (mode != "dump") {
+        if (argc < 3) {
+            std::cerr << "Usage: " << argv[0] << " <create|dump> <audio_file_path>" << std::endl;
+            return -1;
+        }
+
+        mode = argv[1];
+        filePath = fs::absolute(argv[2]);
+    }
+
 
     if (!fs::exists(filePath)) {
         std::cerr << "File does not exist: " << filePath << std::endl;
         return -1;
     }
 
+    //check modes
     if (mode == "dump") {
         dumpFSB(filePath);
     }

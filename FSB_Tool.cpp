@@ -1,20 +1,27 @@
-﻿#include "FMOD/fmod.hpp"
+﻿// FMOD headers
+#include "FMOD/fmod.hpp"
 #include "FMOD/fmod_errors.h"
 
+// FSBANK headers
 #include "FSBANK/fsbank.h"
 #include "FSBANK/fsbank_errors.h"
 
-#include <filesystem>
+// Standard C++ headers
 #include <iostream>
-#include <vector>
 #include <fstream>
 
-namespace fs = std::filesystem;
+// Boost libraries
+#include <boost/filesystem.hpp>
+#include <boost/algorithm/string.hpp>
+#include <boost/nowide/convert.hpp>
+#include <boost/locale.hpp>
+
+namespace fs = boost::filesystem;
 
 void ERRCHECK(FMOD_RESULT result) {
 #ifdef _DEBUG
     if (result != FMOD_OK) {
-        printf("FMOD error! (%d) %s\n", result, FMOD_ErrorString(result));
+        wprintf(L"FMOD error! (%d) %s\n", result, FMOD_WErrorString(result));
         exit(-1);
     }
 #endif
@@ -23,7 +30,7 @@ void ERRCHECK(FMOD_RESULT result) {
 void ERRCHECK(FSBANK_RESULT result) {
 #ifdef _DEBUG
     if (result != FSBANK_OK) {
-        printf("FSBANK error! (%d) %s\n", result, FSBank_ErrorString(result));
+        wprintf(L"FSBANK error! (%d) %s\n", result, FSBank_WErrorString(result));
         exit(-1);
     }
 #endif
@@ -49,15 +56,18 @@ void dumpFSB(const fs::path& filePath) {
     ERRCHECK(result);
 
     if (version < FMOD_VERSION) {
-        printf("Error!  You are using an old version of FMOD %08x.  This program requires %08x\n", version, FMOD_VERSION);
+        wprintf(L"Error!  You are using an old version of FMOD %08x.  This program requires %08x\n", version, FMOD_VERSION);
         exit(-1);
     }
 
     result = system->init(32, FMOD_INIT_NORMAL, nullptr);
     ERRCHECK(result);
 
-    result = system->createSound(filePath.string().c_str(), FMOD_DEFAULT, 0, &sound);
+
+    std::string utf8FilePath = boost::locale::conv::utf_to_utf<char>(filePath.wstring());
+    result = system->createSound(utf8FilePath.c_str(), FMOD_DEFAULT, nullptr, &sound);
     ERRCHECK(result);
+
 
     int numSubSounds = 0;
     result = sound->getNumSubSounds(&numSubSounds);
@@ -101,7 +111,7 @@ void dumpFSB(const fs::path& filePath) {
         result = system->init(32, FMOD_INIT_STREAM_FROM_UPDATE, (void*)filename.c_str());
         ERRCHECK(result);
 
-        result = system->createSound(filePath.string().c_str(), FMOD_DEFAULT, nullptr, &sound);
+        result = system->createSound(utf8FilePath.c_str(), FMOD_DEFAULT, nullptr, &sound);
         ERRCHECK(result);
 
         result = sound->getSubSound(i, &subsound);
@@ -124,76 +134,84 @@ void dumpFSB(const fs::path& filePath) {
     }
 }
 
-void createFSB(const fs::path& filePath) {
+void createFSB(const boost::filesystem::path& filePath) {
     FSBANK_RESULT result;
-    std::vector<std::string> fileNames;
-
-    std::string ext = filePath.extension().string();
-    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+    std::vector<std::wstring> fileNames;
+    std::string ext = boost::algorithm::to_lower_copy(filePath.extension().string());
 
     if (ext == ".txt") {
-        std::ifstream fileList(filePath);
+        std::wifstream fileList(filePath.string());
         if (!fileList) {
             std::cerr << "Failed to open file list: " << filePath << "\n";
             return;
         }
 
-        std::string line;
+        fileList.imbue(boost::locale::generator().generate("en_US.UTF-8"));
+
+        std::wstring line;
         while (std::getline(fileList, line)) {
             if (!line.empty()) {
-                fileNames.push_back(line);
+                fileNames.push_back(boost::filesystem::path(line).wstring());
             }
         }
     }
     else {
-        fileNames.push_back(filePath.string());
+        fileNames.push_back(filePath.wstring());
     }
 
+    //Init FSBank
     result = FSBank_Init(FSBANK_FSBVERSION_FSB5, FSBANK_INIT_NORMAL, 1, nullptr);
     ERRCHECK(result);
 
-    // Create one FSBANK_SUBSOUND per file
+    //vector array of soundbanks (for each file)
     std::vector<FSBANK_SUBSOUND> subsounds(fileNames.size());
-    std::vector<const char*> cstrs; // Store c-strings separately to ensure they remain valid
-    cstrs.reserve(fileNames.size());
+    //converted strings
+    std::vector<std::string> utf8Strings;
+    //ptrs for them
+    std::vector<const char*> cfileNames;
 
     for (size_t i = 0; i < fileNames.size(); ++i) {
-        cstrs.push_back(fileNames[i].c_str());
+
+        utf8Strings.push_back(boost::locale::conv::utf_to_utf<char>(fileNames[i]));
+        cfileNames.push_back(utf8Strings.back().c_str());
 
         subsounds[i] = {};
-        subsounds[i].fileNames = &cstrs.back();
+        subsounds[i].fileNames = &cfileNames.back();
         subsounds[i].numFiles = 1;
         subsounds[i].overrideFlags = FSBANK_BUILD_DISABLESYNCPOINTS;
-        //subsounds[i].overrideQuality = 100;
-        //subsounds[i].desiredSampleRate = 48000;
-        //subsounds[i].percentOptimizedRate = 100;
     }
-    //FSBANK_FORMAT_OPUS FSBANK_FORMAT_VORBIS
-    result = FSBank_Build(subsounds.data(),static_cast<int>(subsounds.size()),FSBANK_FORMAT_OPUS,FSBANK_BUILD_DEFAULT | FSBANK_BUILD_DONTLOOP,100,nullptr,"out.fsb");
+
+    if (fileNames.size() == 1) {
+        auto outputPath = boost::nowide::narrow(filePath.filename().replace_extension(L".fsb").wstring());
+        result = FSBank_Build(subsounds.data(), static_cast<int>(subsounds.size()), FSBANK_FORMAT_VORBIS, FSBANK_BUILD_DEFAULT | FSBANK_BUILD_DONTLOOP, 100, nullptr, outputPath.c_str());
+    }
+    else {
+        result = FSBank_Build(subsounds.data(), static_cast<int>(subsounds.size()), FSBANK_FORMAT_VORBIS, FSBANK_BUILD_DEFAULT | FSBANK_BUILD_DONTLOOP, 100, nullptr, "Output.fsb");
+    }
+
     ERRCHECK(result);
 
     result = FSBank_Release();
     ERRCHECK(result);
 }
 
-int main(int argc, const char** argv) {
 
-    std::string mode;
+int wmain(int argc, wchar_t** argv) {
+    std::wstring mode;
     fs::path filePath;
 
     if (argc == 2) {
         filePath = fs::absolute(argv[1]);
-
-        std::string ext = filePath.extension().string();
-        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-        if (ext == ".fsb") {
-            mode = "dump";
+        std::wstring ext = filePath.extension().wstring();
+        boost::algorithm::to_lower(ext);
+        if (ext == L".fsb") {
+            mode = L"dump";
         }
     }
 
-    if (mode != "dump") {
+    if (mode != L"dump") {
         if (argc < 3) {
-            std::cerr << "Usage: " << argv[0] << " <create|dump> <FSB/List>" << std::endl;
+            std::wcerr << L"Usage: " << argv[0] << L" <create|dump> <FSB/List>" << std::endl;
             return -1;
         }
 
@@ -201,21 +219,20 @@ int main(int argc, const char** argv) {
         filePath = fs::absolute(argv[2]);
     }
 
-
     if (!fs::exists(filePath)) {
-        std::cerr << "File does not exist: " << filePath << std::endl;
+        std::wcerr << L"File does not exist: " << filePath.wstring() << std::endl;
         return -1;
     }
 
-    //check modes
-    if (mode == "dump") {
+    // Check modes
+    if (mode == L"dump") {
         dumpFSB(filePath);
     }
-    else if (mode == "create") {
+    else if (mode == L"create") {
         createFSB(filePath);
     }
     else {
-        std::cerr << "Invalid mode. Use 'create' or 'dump'." << std::endl;
+        std::wcerr << L"Invalid mode. Use 'create' or 'dump'." << std::endl;
         return -1;
     }
 
